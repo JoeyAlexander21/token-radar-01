@@ -12,9 +12,11 @@ the implied value of the token it may one day issue, with a concrete farm plan f
 - **Entry:** `main.ts` (Node 22, standard library only) reads `/input/snapshot.json`,
   writes `/output/board.json`, `/output/data.js`, copies `dashboard/` and `screenshots/`,
   and writes `/output/dossier.json` with the vendored `vendor/makefun-board.ts`.
-- **Board:** 178 rows — the 40-protocol watchlist plus 138 pre-token protocols below the
-  $50M floor. Rank 1 is Steakhouse Financial at $63.1M implied value.
-- **Status:** built and verified locally. **Not submitted.** No repo created, nothing pushed.
+- **Board:** 184 rows — the 40-protocol watchlist plus 138 pre-token protocols below the
+  $50M floor plus 6 above-floor protocols cleared by manual vetting (27 Nov 2026).
+  Rank 1 is Steakhouse Financial at $63.1M implied value.
+- **Status:** v1 submitted 2026-11-25 ("Cosmic Lever"); v2 iteration built 2026-11-27
+  (6 vetted rows + 758/758 filing table, model `radar-3` unchanged) — resubmit pending.
 
 ## Methodology (model `radar-3`)
 
@@ -47,7 +49,21 @@ that already trades (the watchlist's own exclusion, applied to every row: WBTC i
 on Ethereum, Binance staked ETH is ETH in Binance's staking product). Above the $50M
 floor only watchlist protocols are ranked — the house's rule is the only record of which
 above-floor protocols are parents or wrapped products, and the snapshot's ten fields
-cannot reproduce it. Live-token protocols are set aside with their market caps.
+cannot reproduce it. **Exception (v2, 27 Nov 2026):** six above-floor protocols were
+added after a name-by-name manual vetting — DefiLlama `parentProtocol` checks plus
+live-token searches (CIAN Yield Layer, Mellow Core, Figure Markets Prime, Extended
+Perps, Arcus Perps, AZverse Perps). Fourteen above-floor candidates failed that vetting
+and are set aside with reasons. **Filing table (v2):** all 758 protocols in the snapshot
+are accounted for — 184 ranked, 416 live-token, 128 excluded by the category rule,
+16 by the name rule, 14 by manual vetting — in `dashboard/filing.js` and in a Filing
+section of the dashboard, so the coverage can be checked name by name. **Snapshot
+staleness (v2 note):** the snapshot is frozen at 14 Nov 2026, so it still records
+thUSD, avUSD and BFI as pre-token even though those tokens now trade; the manual
+vetting caught them and they are filed as manually excluded, not ranked. Extended
+Perps is the mirror case: its XTEN token was announced for 30 Nov 2026, *after* the
+snapshot date, so per the sealed snapshot it is still pre-token and is ranked — the
+dashboard and this README say so. Live-token protocols are set aside with their market
+caps.
 
 **Farm plans.** Seven steps per protocol, derived from its own record (category, chains,
 TVL, age): a fresh-wallet setup, a category-specific main action, a second different
@@ -71,7 +87,7 @@ dashboard says so. Two terms were **tested and dropped** because they worsened h
 error: per-category multiples (leave-one-out 0.53 → 0.57 dex) and chain breadth
 (within-2x 35.3% → 34.5%). Category medians are still shown as peer context, not as an
 input. The dashboard's detail view recomputes every row from the snapshot figures and
-checks the number `board.json` carries (0 mismatches across 178 rows).
+checks the number `board.json` carries (0 mismatches across 184 rows).
 
 ## Ablation — 11 challengers to radar-3, all rejected (2026-11-25)
 
@@ -102,6 +118,27 @@ medians but collapses walk-forward, which is the test that most resembles rankin
 protocols listed later — exactly what this board does. Growth weight 0.5 sits in the
 flat middle: 0.25 and 1.0 both move the medians by ~0.005 dex, i.e. noise.
 
+### Refit retest (2026-11-26): 5 more variants, all rejected
+
+Before the v2 iteration, five more variants were tested in a Python harness that
+replicates `validateModel` exactly (radar-3 replication matches: LOO 0.534 / 35.3%,
+WF 0.408 / 27.9%). Same rule — adopt only if it beats radar-3 on **both** tests.
+None did, so radar-3 stands unchanged in v2.
+
+| Variant | LOO med | LOO 2x | WF med | WF 2x | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| M + log(age) in the fit | 0.521 | 32.8% | 0.409 | 27.9% | LOO median better, 2x worse |
+| M2 age in the fit, maturity removed | 0.543 | 31.9% | 0.420 | 27.9% | worse |
+| N trimmed refit (\|residual\| ≤ 1 dex) | 0.552 | 34.5% | 0.370 | 39.5% | LOO worse, WF better |
+| O + log(chain count) | 0.527 | 35.3% | 0.455 | 25.6% | WF worse |
+| P TVL + age + chains | 0.519 | 32.8% | 0.448 | 25.6% | WF worse |
+| B TVL ≥ $50M (replication of the near-miss) | 0.546 | 34.5% | 0.393 | 41.9% | LOO worse, WF better — confirmed |
+
+The pattern repeats: every variant that improves walk-forward damages leave-one-out,
+and vice versa. A sub-0.45 dex median on both tests looks unreachable with snapshot
+signals alone (TVL, age, chain count, category all tested and failed); a new signal
+from outside the snapshot would be needed, and that is out of scope for this entry.
+
 ## Data source
 
 - `input/snapshot.json` from the competition kit: DefiLlama `https://api.llama.fi/protocols`,
@@ -129,19 +166,21 @@ lib/model.ts             radar-3 model: fit, blind tests, launch rates, board, f
 vendor/makefun-board.ts  make.fun dossier library, copied from the kit WITHOUT changes
 dashboard/index.html     static page shell (loads ../data.js, no network)
 dashboard/app.css        paper / ink-navy / teal-amber theme
-dashboard/app.js         board, filters, detail dialog, value map, model sandbox
-screenshots/1-board.png  board (1280×900, 152 KB)
-screenshots/2-detail.png protocol detail (1280×900, 190 KB)
-screenshots/3-filtered.png  filtered view, Risk Curators (1280×900, 152 KB)
+dashboard/app.js         board, filters, detail dialog, value map, model sandbox, filing table
+dashboard/filing.js      generated by main.ts: one "slug code" row per protocol (758/758)
+screenshots/1-board.png  board (1280×900, 162 KB)
+screenshots/2-detail.png protocol detail (1280×900, 195 KB)
+screenshots/3-filtered.png  filtered view, Risk Curators (1280×900, 164 KB)
 out/                     generated output of the last run (board.json, data.js, dossier.json)
 LICENSE                  MIT
 ```
 
-Gate self-check (mirrors `RULES.txt`): 178 rows; ranks 1–178; implied values
+Gate self-check (mirrors `RULES.txt`): 184 rows; ranks 1–184; implied values
 non-increasing and not all equal; watchlist coverage 40/40; all farm plans 7 steps of
 20–600 chars; 3 screenshots within size and dimension caps; `dossier.json` 709 KB
-(< 1.5 MiB) with dashboard source text 49,223 bytes (< 65,536, so the judge reads the
-whole source); no `http(s)` string anywhere in the dashboard files.
+(< 1.5 MiB) with dashboard source text 65,098 bytes (< 65,536, so the judge reads the
+whole source — 438 bytes of headroom; the filing table is the last big addition the
+cap will take); no `http(s)` string anywhere in the dashboard files.
 
 ## Lessons learned (what this build taught us)
 
@@ -176,11 +215,17 @@ whole source); no `http(s)` string anywhere in the dashboard files.
    install chromium`) screenshots the static dashboard offline. Check the renders:
    default button styling on sort headers and run-together mover cards were both
    caught only by looking at the PNGs.
+9. **A frozen snapshot goes stale — vetting is the patch, not a new snapshot.**
+   Thirteen days after the snapshot, thUSD, avUSD and BFI already trade; the snapshot
+   still says pre-token. You cannot re-fetch (the snapshot is sealed), but you can
+   vet the additions by hand and file the staleness honestly instead of ranking a
+   token that already exists. The filing table is the mechanism: it makes the
+   staleness visible instead of hiding it in a row count.
 
 ## What is still missing before submit
 
-- [ ] GitHub repository (created after the competition opened, 2026-11-14T10:00:00Z) + push — **parent decides**. `.makefun/owner.json` (`{"wallet": "7vmsx3zAhxqKEwe6eNQGwd6FCPaDfhM3DTjDCyw2wTts"}`) is committed in this repo so the entry passes `repo_owner` even if the repo owner differs from the linked GitHub account; the README already carries the three make.fun badges (owner/repo `JoeyAlexander21/token-radar-01` — update the badge URLs if the repo is named differently) and the `makefun` topic + make.fun homepage must be set on the GitHub About before submit.
-- [x] Transcript bundle prepared 2026-11-25 (staging + `transcripts.tar.gz`, `makefun check` 15 passed / 0 failed — see `~/workspace/makefun/staging-token-radar/`). Submit only when the parent says so.
-- [ ] Possible next step: a dev-grade submission early to get a provisional win rate against the house dashboards; iterate the model only if the rate disappoints — the ablation table above shows the obvious next variants (TVL ≥ $50M fit, Theil-Sen) already fail the blind tests, so a new idea would need a new signal, not a new fit.
+- [x] GitHub repository (created after the competition opened, 2026-11-14T10:00:00Z): `JoeyAlexander21/token-radar-01`, v1 pushed and submitted 2026-11-25. `.makefun/owner.json` (`{"wallet": "7vmsx3zAhxqKEwe6eNQGwd6FCPaDfhM3DTjDCyw2wTts"}`) is committed in this repo so the entry passes `repo_owner` even if the repo owner differs from the linked GitHub account; the README already carries the three make.fun badges and the `makefun` topic + make.fun homepage are set on the GitHub About.
+- [ ] v2 iteration (27 Nov 2026): commit the 6 vetted rows + filing table + regenerated screenshots to the same repo, prepare a fresh transcript bundle, `makefun check` 15 passed / 0 failed, then resubmit (approved by the user 27 Nov 2026 09:17 WIB; 9 submissions left; deadline 2026-12-14 10:00 UTC / 17:00 WIB).
+- [x] Transcript bundle prepared 2026-11-25 for v1 (staging + `transcripts.tar.gz`, `makefun check` 15 passed / 0 failed — see `~/workspace/makefun/staging-token-radar/`).
 - [ ] The competition deadline is **2026-12-14 10:00 UTC (17:00 WIB)**. Prizes:
       $1,000 / 4× $50 / 5× $25, total $1,325 in USDC on Solana.

@@ -17,7 +17,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { boardIssue, buildFiling, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -72,6 +72,26 @@ function copyFiles(from: string, to: string): string[] {
 
 const dash = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));
+
+// The filing table: every protocol in the snapshot, one "slug code" row per line, written
+// into the dashboard so the page can render it and the dossier carries it as source text.
+// R ranked on the board · L live token, set aside with its market cap · C excluded by the
+// category rule · N excluded by the name rule · P excluded by manual vetting (reasons in
+// FILING_MANUAL, keyed by slug). The rows are sorted by slug, so the file is byte-identical
+// on every run — the determinism check depends on that.
+const filing = buildFiling(snapshot, board);
+const filingText = filing.rows.map((r) => `${r.slug} ${r.disposition}`).join('\n');
+const filingManual: Record<string, string> = {};
+for (const m of filing.manual) filingManual[m.slug] = m.reason;
+writeFileSync(
+  join(out, 'dashboard', 'filing.js'),
+  '// Filing table: every one of the snapshot\'s ' + filing.total + ' protocols, one per line: "<slug> <code>".\n' +
+  '// R ranked on the board (' + filing.ranked + ') · L live token, set aside with its market cap (' + filing.live + ')\n' +
+  '// C excluded by the category rule (' + filing.excluded_category + ') · N excluded by the name rule (' + filing.excluded_name + ')\n' +
+  '// P excluded by manual vetting on 27 Nov 2026 (' + filing.excluded_manual + ') — reasons in FILING_MANUAL below.\n' +
+  'window.FILING_TEXT = `' + filingText + '`;\n' +
+  'window.FILING_MANUAL = ' + JSON.stringify(filingManual) + ';\n',
+);
 if (shots.length < 3) {
   process.stderr.write(`token radar: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, a detail view and a filtered view\n`);
   process.exit(1);

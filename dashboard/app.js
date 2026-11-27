@@ -241,14 +241,18 @@
           'The watchlist is the floor: ', el('b', { text: DATA.watchlist_size + ' protocols' }),
           ' with at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL and no token on record. The early radar adds ',
           el('b', { text: DATA.early_size + ' more pre-token protocols' }),
-          ' below that floor, so the board holds ', el('b', { text: DATA.board_size + ' rows' }),
-          ' in all. Implied value is a fitted model, not a promise of a launch.'),
+          ' below that floor, and manual vetting adds ',
+          el('b', { text: DATA.vetted_size + ' more above it' }),
+          ', so the board holds ', el('b', { text: DATA.board_size + ' rows' }),
+          ' in all. Every one of the snapshot’s ', el('b', { text: DATA.filing.total + ' protocols' }),
+          ' is filed below — ranked, live-token, or set aside with a reason. Implied value is a fitted model, not a promise of a launch.'),
         el('p', { id: 'sandbox-note', class: 'note', text: sandboxActive() ? 'Model sandbox is on: the values below use your slider settings, not the board. Reset it to see the ranked board.' : 'Move the sliders in “How implied value is computed” to test the model — the board re-sorts live.' }),
         el('p', { class: 'strip', text: 'Data integrity, snapshot ' + DATA.as_of + ': ' + ig.protocols + ' protocols · ' + ig.no_change_7d + ' without a 7-day change · ' + ig.no_listed_at + ' without a listing date (age assumed 365d) · ' + ig.zero_mcap_excluded + ' live protocols with a $0 market cap excluded from the fit · fit on ' + ig.live_comps + ' live comparables.' })
       ),
       el('div', { class: 'facts' },
         el('div', { class: 'fact' }, el('span', { text: 'Watchlist covered' }), el('b', { text: DATA.watchlist_size + ' / ' + DATA.watchlist_size })),
         el('div', { class: 'fact' }, el('span', { text: 'Pre-token rows' }), el('b', { text: String(DATA.board_size) })),
+        el('div', { class: 'fact' }, el('span', { text: 'Snapshot filed' }), el('b', { text: DATA.filing.total + ' / ' + DATA.filing.total })),
         el('div', { class: 'fact' }, el('span', { text: 'Total implied value' }), el('b', { text: fmtUsd(DATA.total_implied_usd) })),
         el('div', { class: 'fact' }, el('span', { text: 'Live-token set aside' }), el('b', { text: String(DATA.live_size) }))
       )
@@ -421,7 +425,7 @@
     var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Value map: TVL against implied value, log scales">' + grid + dots + '</svg>';
     return el('section', { class: 'panel vmap' },
       el('h2', { text: 'Value map' }),
-      el('p', { class: 'sub', text: 'Each dot is a protocol: TVL across, implied value up, both on log scales. Amber dots are the watchlist; teal dots are the early radar. The cloud bends: value grows with the square root of TVL, not with TVL itself — that bend is the fitted power law.' }),
+      el('p', { class: 'sub', text: 'Each dot is a protocol: TVL across, implied value up, both on log scales. Amber dots are the watchlist; teal dots are the rest of the board. The cloud bends: value grows with the square root of TVL, not with TVL itself — that bend is the fitted power law.' }),
       el('div', { html: svg })
     );
   }
@@ -506,7 +510,7 @@
     var peer = DATA.peer_context.by_category[row.category || 'Other'];
     dialog.appendChild(el('div', { class: 'detail-head' },
       el('div', null,
-        el('span', { class: 'brand-name', text: 'Rank ' + row.rank + ' of ' + DATA.board_size + (row.watchlist ? ' — watchlist' : ' — early radar') }),
+        el('span', { class: 'brand-name', text: 'Rank ' + row.rank + ' of ' + DATA.board_size + (row.watchlist ? ' — watchlist' : row.tvl_usd >= DATA.floor_usd ? ' — vetted above the floor' : ' — early radar') }),
         el('h2', { id: 'detail-title', text: row.name }),
         el('p', { class: 'sub', text: (row.category || 'Other') + ' on ' + (row.chains && row.chains.length ? row.chains.join(', ') : 'an unnamed chain') })
       ),
@@ -544,6 +548,46 @@
     }
   }
 
+  // The filing table: every protocol in the snapshot, one row each, so the board's coverage
+  // can be checked name by name. filing.js carries the rows (window.FILING_TEXT) and the
+  // manual reasons (window.FILING_MANUAL); data.js carries only the counts.
+  function filingPanel() {
+    var f = DATA.filing;
+    if (!f) return null;
+    var text = typeof window.FILING_TEXT === 'string' ? window.FILING_TEXT : '';
+    var manual = window.FILING_MANUAL || {};
+    var names = {};
+    DATA.rows.forEach(function (r) { names[r.slug] = r.name; });
+    DATA.live.forEach(function (r) { names[r.slug] = r.name; });
+    var rows = text.split('\n').filter(function (l) { return l.length > 0; });
+    var tbody = el('tbody');
+    rows.forEach(function (line) {
+      var parts = line.split(' ');
+      var slug = parts[0], code = parts[1];
+      var label = code === 'R' ? 'ranked' : code === 'L' ? 'live token' : code === 'C' ? 'excluded: category rule' : code === 'N' ? 'excluded: name rule' : 'excluded: manual vetting';
+      tbody.appendChild(el('tr', null,
+        el('td', { text: slug }),
+        el('td', { text: names[slug] || '' }),
+        el('td', { text: label }),
+        el('td', { text: code === 'P' ? (manual[slug] || '') : '' })
+      ));
+    });
+    return el('section', { class: 'panel' },
+      el('h2', { text: 'Filing: all ' + f.total + ' protocols accounted for' }),
+      el('p', { class: 'sub', text: f.ranked + ' ranked on the board · ' + f.live + ' live-token, set aside with their market caps · ' + f.excluded_category + ' excluded by the category rule · ' + f.excluded_name + ' excluded by the name rule · ' + f.excluded_manual + ' excluded by manual vetting. Nothing in the snapshot is unaccounted for.' }),
+      el('details', null,
+        el('summary', { text: 'Full filing table (' + rows.length + ' rows)' }),
+        el('div', { class: 'table-wrap' },
+          el('table', { class: 'calib' },
+            el('caption', { class: 'sub', text: 'One row per protocol in the snapshot. R ranked on the board; L live token, set aside with its market cap; C excluded by the category rule (Bridge, Canonical Bridge, Liquid Staking, Liquid Restaking, Restaked BTC, CEX); N excluded by the name rule (versioned name, wrapped/staked/staking, exchange prefix); P excluded by manual vetting on 27 Nov 2026, with the reason given.' }),
+            el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', text: 'Name' }), el('th', { scope: 'col', text: 'Filing' }), el('th', { scope: 'col', text: 'Reason' }))),
+            tbody
+          )
+        )
+      )
+    );
+  }
+
   function footer() {
     return el('p', { class: 'foot' },
       'Source: ' + DATA.source + '. Snapshot date ' + DATA.as_of + '. “No token” means DefiLlama records no token for the protocol — not proof it has none. Implied values are this entry’s fitted model, not a prediction that a token launches, when it launches, or what it trades at. Do your own research; never pay to claim an airdrop.'
@@ -574,6 +618,7 @@
     shell.appendChild(el('div', { id: 'board-panel' }, state.tab === 'pre-token' ? boardTable() : liveTable()));
     if (state.tab === 'pre-token') shell.appendChild(valueMap());
     if (state.tab === 'pre-token') shell.appendChild(modelPanel());
+    if (state.tab === 'pre-token') shell.appendChild(filingPanel());
     shell.appendChild(footer());
     app.appendChild(shell);
     app.setAttribute('aria-busy', 'false');

@@ -1,11 +1,15 @@
 // Token Radar model "radar-3": one sealed DefiLlama snapshot in, one ranked board out.
 //
 // The board ranks the watchlist (40 protocols) plus every rankable pre-token protocol BELOW
-// the floor (138 more), 178 rows. Above the floor, only watchlist protocols are ranked: the
-// house's own rule already screened the above-floor field for parents and wrapped products —
-// a signal the snapshot's ten fields cannot reproduce. Live-token protocols are never ranked;
-// they are set aside and shown with their market caps, because a market cap is a fact, not a
-// model. A protocol is rankable when it records no token, is not an exchange, not a versioned
+// the floor (138 more), plus six above-floor protocols that passed manual vetting on
+// 27 Nov 2026 (ABOVE_FLOOR_VETTED): 184 rows. Above the floor the house's own rule already
+// screened the field for parents and wrapped products — a signal the snapshot's ten fields
+// cannot reproduce — so an above-floor protocol joins the board only after a name-by-name
+// vetting (DefiLlama parentProtocol + live-token checks); the fourteen that failed are set
+// aside with reasons in the filing table (buildFiling), so all 758 protocols are accounted
+// for: 184 ranked, 416 live-token, 128 excluded by the category rule, 16 by the name rule,
+// 14 by manual vetting. Live-token protocols are never ranked; they are set aside and shown
+// with their market caps, because a market cap is a fact, not a model. A protocol is rankable when it records no token, is not an exchange, not a versioned
 // pool, and not a wrapped, staked or bridged product of a token that already trades (the
 // watchlist's own exclusion, applied to every row: WBTC is Bitcoin on Ethereum, Binance staked
 // ETH is ETH in Binance's staking product, and neither is a protocol still waiting on a launch
@@ -243,7 +247,9 @@ export interface RadarData {
   watchlist_size: number;
   board_size: number;
   early_size: number;
+  vetted_size: number;
   live_size: number;
+  filing: { total: number; ranked: number; live: number; excluded_category: number; excluded_name: number; excluded_manual: number };
   total_implied_usd: number;
   rows: RadarRow[];
   live: LiveRow[];
@@ -496,6 +502,106 @@ function bySlug(protocols: SnapshotProtocol[]): Map<string, SnapshotProtocol> {
   return new Map(protocols.map((p) => [p.slug, p]));
 }
 
+/**
+ * Above-floor protocols the manual vetting of 27 Nov 2026 cleared for the board (slug -> the
+ * vetting note). The vetting is recorded in token-radar-vetting-2026-11-27.md: for each of the
+ * 20 rankable protocols above the $50M floor, the DefiLlama parentProtocol field was checked
+ * (all 12 sampled watchlist protocols have parentProtocol null, while all 20 candidates have
+ * a parent set — that is why none is on the watchlist) and live-token status was searched.
+ * Six cleared: a genuine protocol with no token of its own, whose parent (if any) has no token
+ * either. Extended Perps' XTEN token was announced for 30 Nov 2026, AFTER the snapshot date
+ * 14 Nov, so per the sealed snapshot it is still pre-token; the README says so.
+ */
+export const ABOVE_FLOOR_VETTED: Record<string, string> = {
+  'arcus-perps': 'Perp DEX on Robinhood Chain; points program, no token announced.',
+  'azverse-perps': 'Perp DEX; no token yet.',
+  'cian-yield-layer': 'Yield aggregator; no native token.',
+  'extended-perps': 'Perp DEX (ex-X10); XTEN TGE announced for 30 Nov 2026, after the snapshot date — valid per the sealed snapshot.',
+  'figure-markets-prime': 'Lending market; no crypto token recorded. Its sister entry, Figure Markets Exchange, is a venue and is set aside.',
+  'mellow-core': 'Core Vaults are Mellow Protocol\'s main vault infrastructure; no governance token, points program running.',
+};
+
+/**
+ * Above-floor protocols the manual vetting of 27 Nov 2026 set aside (slug -> reason).
+ * Fourteen of the twenty above-floor candidates fail for one of these reasons: the TVL is a
+ * curator firm's AUM across other protocols' vaults, a geographic segment of a parent, an
+ * arm or product of a parent whose token already trades, or a live token (stablecoin,
+ * wrapped token, or a token that already trades on an exchange) — in every case the value
+ * is already captured by a token that exists, so ranking it would double-count it.
+ */
+export const MANUAL_EXCLUDED: Record<string, string> = {
+  'avant-avusd': 'avUSD is a live stablecoin (~$89M market cap, trading); its token already exists.',
+  'bitfi-basis': 'BFI token already exists and trades (Kraken listing 20 Nov 2026).',
+  'circle-gateway': 'Circle\'s bridge product; a bridged product of a parent whose token trades.',
+  'defi-saver-asset-management': 'Asset-management arm of DeFi Saver, not the protocol itself.',
+  'figure-markets-exchange': 'Exchange venue: its TVL is custody and trading volume, not a protocol business.',
+  'ipor-fusion': 'IPOR\'s vault product; the IPOR token already trades.',
+  'loopscale-lending': 'Merged with Orca into Formation (7 Oct 2026): no Loopscale token will launch; ORCA is the group token and already trades.',
+  'nado-spot': 'No NADO token will launch; points convert to $INK, which already trades.',
+  'polymarket-international': 'Geographic segment of Polymarket, not a standalone protocol.',
+  'sentora-curator': 'Curator AUM of the Sentora firm across other protocols\' vaults (Morpho, Euler, Kamino); not a protocol with a token of its own.',
+  'solv-strategies': 'Solv\'s strategy vaults; the SOLV token already trades.',
+  'stellar-defi-hub': 'Part of Sentora (DefiLlama): Sentora vaults on Stellar, operated by Ultrastellar.',
+  'theo-network-thusd': 'thUSD is a live stablecoin (~$139M market cap, trading on Uniswap V4); its token already exists.',
+  'usdcx': 'Wrapped stablecoin: a wrapped form of USDC, which already trades.',
+};
+
+/** One protocol's filing disposition: R ranked, L live token, C/N/P set aside by rule/vetting. */
+export type FilingDisposition = 'R' | 'L' | 'C' | 'N' | 'P';
+export interface FilingRow { slug: string; disposition: FilingDisposition; }
+export interface Filing {
+  total: number;
+  ranked: number;
+  live: number;
+  excluded_category: number;
+  excluded_name: number;
+  excluded_manual: number;
+  manual: Array<{ slug: string; name: string; reason: string }>;
+  rows: FilingRow[];
+}
+
+/**
+ * File every protocol in the snapshot: R ranked on the board, L live token (set aside with
+ * its market cap), C excluded by the category rule, N excluded by the name rule, P excluded
+ * by manual vetting. The filing is exhaustive by construction — every protocol gets exactly
+ * one disposition, and the counts must sum to the snapshot size (758). A protocol that is
+ * pre-token, rankable, above the floor, on neither the watchlist nor the vetted list, and
+ * passes both the category and name rules can only be one of the fourteen manually excluded
+ * ones; anything else is a bug, and this function throws rather than file it silently.
+ */
+export function buildFiling(snapshot: Snapshot, board: BoardRow[]): Filing {
+  const onBoard = new Set(board.map((r) => r.slug));
+  const rows: FilingRow[] = snapshot.protocols.map((p) => {
+    let d: FilingDisposition;
+    if (!isPreToken(p)) d = 'L';
+    else if (onBoard.has(p.slug)) d = 'R';
+    else if (EXCLUDED_CATEGORIES.has(p.category ?? '')) d = 'C';
+    else if (VERSIONED.test(p.name) || WRAPPED_WORD.test(p.name) || EXCHANGE_PREFIX.test(p.name)) d = 'N';
+    else if (MANUAL_EXCLUDED[p.slug] !== undefined) d = 'P';
+    else throw new Error('unfiled protocol: ' + p.slug + ' (' + p.name + ') is pre-token and rankable but on no list');
+    return { slug: p.slug, disposition: d };
+  }).sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  const count = (d: FilingDisposition): number => rows.reduce((n, r) => n + (r.disposition === d ? 1 : 0), 0);
+  const manual = snapshot.protocols
+    .filter((p) => rows.find((r) => r.slug === p.slug)?.disposition === 'P')
+    .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
+    .map((p) => ({ slug: p.slug, name: p.name, reason: MANUAL_EXCLUDED[p.slug] ?? '' }));
+  const filing: Filing = {
+    total: rows.length,
+    ranked: count('R'),
+    live: count('L'),
+    excluded_category: count('C'),
+    excluded_name: count('N'),
+    excluded_manual: count('P'),
+    manual,
+    rows,
+  };
+  if (filing.ranked + filing.live + filing.excluded_category + filing.excluded_name + filing.excluded_manual !== filing.total) {
+    throw new Error('filing does not add up: ' + JSON.stringify(filing));
+  }
+  return filing;
+}
+
 /** The protocols the board ranks, strongest first, with ranks 1..n. */
 export function buildBoard(
   snapshot: Snapshot,
@@ -518,6 +624,15 @@ export function buildBoard(
     .filter((p) => !chosen.has(p.slug) && isRankable(p) && p.tvl_usd < snapshot.floor_usd)
     .sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
   for (const p of early) chosen.set(p.slug, p);
+  // The vetted above-floor additions: rankable protocols above the floor that passed the
+  // manual vetting of 27 Nov 2026 (ABOVE_FLOOR_VETTED), which reproduced the house's screen
+  // name by name (DefiLlama parentProtocol + live-token checks). Six of the twenty
+  // above-floor candidates cleared; the fourteen that failed are set aside with reasons in
+  // the filing table (buildFiling), never ranked.
+  const vetted = snapshot.protocols
+    .filter((p) => !chosen.has(p.slug) && isRankable(p) && p.tvl_usd >= snapshot.floor_usd && ABOVE_FLOOR_VETTED[p.slug] !== undefined)
+    .sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  for (const p of vetted) chosen.set(p.slug, p);
 
   const watch = new Set(snapshot.watchlist);
   const scored = [...chosen.values()].map((p) => {
@@ -718,7 +833,9 @@ export function buildRadar(
   const rates = peerLaunchRates(snapshot);
   const board = buildBoard(snapshot, fit, rates, model);
   const live = liveRows(snapshot);
-  const early = board.filter((r) => !r.watchlist).length;
+  const filing = buildFiling(snapshot, board);
+  const early = board.filter((r) => !r.watchlist && r.tvl_usd < snapshot.floor_usd).length;
+  const vettedSize = board.filter((r) => !r.watchlist && r.tvl_usd >= snapshot.floor_usd).length;
   const movers = board
     .filter((r) => r.change_7d !== null && r.tvl_usd >= 10_000_000)
     .sort((a, b) => b.change_7d! - a.change_7d! || b.tvl_usd - a.tvl_usd)
@@ -754,7 +871,16 @@ export function buildRadar(
     watchlist_size: snapshot.watchlist.length,
     board_size: board.length,
     early_size: early,
+    vetted_size: vettedSize,
     live_size: live.length,
+    filing: {
+      total: filing.total,
+      ranked: filing.ranked,
+      live: filing.live,
+      excluded_category: filing.excluded_category,
+      excluded_name: filing.excluded_name,
+      excluded_manual: filing.excluded_manual,
+    },
     total_implied_usd: board.reduce((n, r) => n + r.implied_value_usd, 0),
     rows: board.map(radarRow),
     live,
